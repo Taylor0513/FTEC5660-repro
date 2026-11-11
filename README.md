@@ -1,3 +1,66 @@
+# Reproducing A-Mem on LoCoMo with DeepSeek (FTEC5660 Reproducibility Work)
+
+> This repo is a fork of [WujiangXu/AgenticMemory](https://github.com/WujiangXu/AgenticMemory)
+> used for a reproducibility study. The upstream README is kept below; **this section**
+> documents everything about our reproduction.
+
+## What we reproduced
+
+- **Paper**: *A-Mem: Agentic Memory for LLM Agents* (arXiv:2502.12110, NeurIPS 2025)
+- **Target claim**: A-Mem's QA performance on the LoCoMo benchmark — per-category
+  F1 / BLEU-1, paper Table 1 (GPT-4o-mini rows) — and the ablation "w/o memory
+  evolution", paper Table 3.
+- **Scope**: first 2 conversations of `data/locomo10.json` (`--ratio 0.2`,
+  788 dialogue turns, 304 QA pairs).
+- **Controlled change of substrate (assignment Edge Case A)**: the backbone LLM is
+  **DeepSeek (`deepseek-chat`)** through its OpenAI-compatible endpoint instead of
+  GPT-4o-mini. Numbers are therefore **not directly comparable** to the paper; we
+  compare as fairly as possible (same tasks, same metrics, same evaluation code).
+- **Our modification (isolated, measurable)**: a new `--disable_evolution` flag that
+  removes the *memory evolution* step (the "update neighbors" LLM call) while keeping
+  note construction and link generation intact — i.e. the paper's "w/o ME" ablation.
+
+## Setup
+
+```bash
+pip install -r requirements.txt
+cp .env.example .env   # fill in your DeepSeek key; never commit .env
+source .env
+```
+
+CPU-only is fine (the `all-MiniLM-L6-v2` embedder runs locally). If `huggingface.co`
+is unreachable, set `HF_ENDPOINT=https://hf-mirror.com` first.
+
+## Run
+
+```bash
+bash run_reproduction.sh
+```
+
+Order: smoke test → full reproduction (seed 42) → ablation (seed 42) →
+`analyze_results.py`, which writes `analysis/comparison_table.md` and
+`analysis/fig_f1_comparison.png`.
+
+## Code changes vs upstream (one commit each)
+
+1. `memory_layer_robust.py`, `test_advanced_robust.py`, `utils.py`: add the
+   `disable_evolution` switch + `--disable_evolution` CLI flag (ablation runs use a
+   separate memory-cache directory `*_noevo`); make the NLTK `wordnet` download
+   non-blocking (wordnet only feeds the auxiliary METEOR metric, which is already
+   guarded by try/except — no effect on F1/BLEU).
+2. Added `make_smoke_dataset.py`, `run_reproduction.sh`, `analyze_results.py`,
+   `.env.example`, this README section.
+
+## Results
+
+See `analysis/comparison_table.md` (generated) and the written report for discussion.
+
+## Secrets
+
+No API keys are committed. `.env` is git-ignored; only `.env.example` is tracked.
+
+---
+
 # Agentic Memory 🧠
 
 A novel agentic memory system for LLM agents that can dynamically organize memories in an agentic way.
