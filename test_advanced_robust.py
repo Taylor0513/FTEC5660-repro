@@ -37,10 +37,14 @@ from datetime import datetime
 # Download required NLTK data
 try:
     nltk.data.find('tokenizers/punkt')
+except LookupError:
+    nltk.download('punkt', quiet=True)
+# wordnet only feeds the auxiliary METEOR metric (already guarded by try/except in utils.py);
+# skip the download so a blocked nltk server cannot hang the run
+try:
     nltk.data.find('wordnet')
 except LookupError:
-    nltk.download('punkt')
-    nltk.download('wordnet')
+    pass
 
 # Initialize SentenceTransformer model (this will be reused)
 try:
@@ -56,7 +60,8 @@ class RobustAdvancedMemAgent:
     """Agent using the robust memory system with plain-text LLM calls."""
 
     def __init__(self, model, backend, retrieve_k, temperature_c5,
-                 sglang_host="http://localhost", sglang_port=30000, refresh_index=False):
+                 sglang_host="http://localhost", sglang_port=30000, refresh_index=False,
+                 disable_evolution=False):
         self.memory_system = RobustAgenticMemorySystem(
             model_name='all-MiniLM-L6-v2',
             llm_backend=backend,
@@ -64,6 +69,7 @@ class RobustAdvancedMemAgent:
             sglang_host=sglang_host,
             sglang_port=sglang_port,
             refresh_index=refresh_index,
+            disable_evolution=disable_evolution,
         )
         self.retriever_llm = RobustLLMController(
             backend=backend,
@@ -207,10 +213,12 @@ def evaluate_dataset(dataset_path: str, model: str, output_path: Optional[str] =
                      temperature_c5: float = 0.5, retrieve_k: int = 10,
                      sglang_host: str = "http://localhost", sglang_port: int = 30000,
                      legacy_c5_reference: bool = False, seed: int = 42,
-                     refresh_index: bool = False, memory_scope: str = "conversation"):
+                     refresh_index: bool = False, memory_scope: str = "conversation",
+                     disable_evolution: bool = False):
     """Evaluate the robust agent on the LoComo dataset."""
     timestamp = datetime.now().strftime("%Y-%m-%d-%H-%M")
-    log_filename = f"eval_robust_{model}_{backend}_ratio{ratio}_{memory_scope}_{timestamp}.log"
+    ablation_tag = "_noevo" if disable_evolution else ""
+    log_filename = f"eval_robust_{model}_{backend}_ratio{ratio}_{memory_scope}{ablation_tag}_{timestamp}.log"
     log_path = os.path.join(os.path.dirname(__file__), "logs", log_filename)
     os.makedirs(os.path.dirname(log_path), exist_ok=True)
 
@@ -237,7 +245,8 @@ def evaluate_dataset(dataset_path: str, model: str, output_path: Optional[str] =
     error_num = 0
     memories_dir = os.path.join(
         os.path.dirname(__file__),
-        "cached_memories_robust_{}_{}{}".format(backend, model, "_refresh" if refresh_index else ""),
+        "cached_memories_robust_{}_{}{}{}".format(
+            backend, model, "_refresh" if refresh_index else "", ablation_tag),
     )
     os.makedirs(memories_dir, exist_ok=True)
     allow_categories = [1, 2, 3, 4, 5]
@@ -246,7 +255,8 @@ def evaluate_dataset(dataset_path: str, model: str, output_path: Optional[str] =
     def load_or_build(sample_idx, sample):
         """An agent holding this conversation's memory, loaded from the cache or built and cached."""
         agent = RobustAdvancedMemAgent(model, backend, retrieve_k, temperature_c5,
-                                       sglang_host, sglang_port, refresh_index)
+                                       sglang_host, sglang_port, refresh_index,
+                                       disable_evolution)
 
         memory_cache_file = os.path.join(memories_dir, f"memory_cache_sample_{sample_idx}.pkl")
         retriever_cache_file = os.path.join(memories_dir, f"retriever_cache_sample_{sample_idx}.pkl")
@@ -356,6 +366,7 @@ def evaluate_dataset(dataset_path: str, model: str, output_path: Optional[str] =
         "ratio": ratio,
         "seed": seed,
         "legacy_c5_reference": legacy_c5_reference,
+        "disable_evolution": disable_evolution,
         "refresh_index": refresh_index,
         "memory_scope": memory_scope,
         "pooled_notes": len(pooled_agent.memory_system.memories) if memory_scope == "pooled" else None,
@@ -427,6 +438,9 @@ def main():
                              "(LoCoMo's protocol, as in the paper). pooled: from one memory holding all "
                              "evaluated conversations, so retrieval must also reject other conversations' "
                              "notes (uses the same memory caches)")
+    parser.add_argument("--disable_evolution", action="store_true",
+                        help="Ablation (w/o ME): skip the neighbor-update step of memory evolution while "
+                             "keeping note construction and link generation. Builds its own memory cache.")
     args = parser.parse_args()
 
     if args.ratio <= 0.0 or args.ratio > 1.0:
@@ -439,7 +453,7 @@ def main():
         dataset_path, args.model, output_path, args.ratio,
         args.backend, args.temperature_c5, args.retrieve_k,
         args.sglang_host, args.sglang_port, args.legacy_c5_reference, args.seed,
-        args.refresh_index, args.memory_scope,
+        args.refresh_index, args.memory_scope, args.disable_evolution,
     )
 
 

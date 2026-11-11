@@ -374,12 +374,16 @@ class RobustAgenticMemorySystem:
                  sglang_host: str = "http://localhost",
                  sglang_port: int = 30000,
                  check_connection: bool = False,
-                 refresh_index: bool = False):
+                 refresh_index: bool = False,
+                 disable_evolution: bool = False):
 
         self.memories: Dict[str, RobustMemoryNote] = {}
         # re-embed neighbours as soon as evolution updates them; otherwise their embeddings stay
         # stale until consolidate_memories runs every evo_threshold evolutions (paper behaviour)
         self.refresh_index = refresh_index
+        # ablation switch (reproducibility assignment): skip the "update neighbors" evolution
+        # step while keeping note construction and link generation intact (paper Table 3, w/o ME)
+        self.disable_evolution = disable_evolution
         self.retriever = SimpleEmbeddingRetriever(model_name)
         self.llm_controller = RobustLLMController(
             llm_backend, llm_model, api_key, api_base,
@@ -506,6 +510,10 @@ class RobustAgenticMemorySystem:
 
             should_strengthen = decision["decision"] in ("STRENGTHEN", "STRENGTHEN_AND_UPDATE")
             should_update = decision["decision"] in ("UPDATE_NEIGHBOR", "STRENGTHEN_AND_UPDATE")
+            if self.disable_evolution:
+                # ablation (w/o ME): never update existing neighbours; link generation via
+                # "strengthen" still runs, so new notes are still connected to the network
+                should_update = False
 
             # ---- Call 2: Strengthen details (conditional) ----
             if should_strengthen:

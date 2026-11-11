@@ -20,7 +20,7 @@ from sentence_transformers.util import pytorch_cos_sim
 # Download required NLTK data
 try:
     nltk.download('punkt', quiet=True)
-    nltk.download('wordnet', quiet=True)
+    # wordnet skipped: only feeds the guarded METEOR metric; a blocked nltk server would hang import
 except Exception as e:
     print(f"Error downloading NLTK data: {e}")
 
