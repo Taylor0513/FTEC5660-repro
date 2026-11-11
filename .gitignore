@@ -1,0 +1,9 @@
+.env
+*.log
+logs/
+cached_memories_*/
+__pycache__/
+*.pyc
+.DS_Store
+restore_and_run.sh
+setup/
